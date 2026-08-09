@@ -117,6 +117,8 @@ sources:
   - invalid
   - resource: policy.md
     id: ""
+    title: 9
+    author: []
     usage_count: -1
     last_modified: last-week
     usage_window: { from: 2026-02-30 }
@@ -133,6 +135,8 @@ sources:
         "usage_window.invalid",
         "frontmatter.source.invalid",
         "frontmatter.source.id.invalid",
+        "frontmatter.source.title.invalid",
+        "frontmatter.source.author.invalid",
         "frontmatter.source.usage_count.invalid",
         "frontmatter.source.last_modified.invalid",
         "sources[1].usage_window.from.invalid",
@@ -148,6 +152,7 @@ type: Metric
 sources: invalid
 generated: agent
 verified: human:ada
+runtime: 42
 parameters: year
 executor: run
 attester: attest
@@ -171,6 +176,7 @@ attester: { resource: "" }
         "frontmatter.sources.invalid",
         "frontmatter.generated.invalid",
         "frontmatter.verified.invalid",
+        "frontmatter.runtime.invalid",
         "frontmatter.parameters.invalid",
         "frontmatter.executor.invalid",
         "frontmatter.attester.invalid",
@@ -182,6 +188,84 @@ attester: { resource: "" }
         "frontmatter.attester.resource.invalid"
       ])
     );
+  });
+
+  it("reports non-mapping verification entries without dropping valid events", () => {
+    const concept = parseConcept(`---
+type: Metric
+verified:
+  - invalid
+  - { by: human:ada, at: 2026-08-01T00:00:00Z }
+---
+`);
+
+    expect(validateConcept(concept)).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        code: "frontmatter.verification.invalid",
+        field: "verified[0]"
+      })
+    ]);
+  });
+
+  it("warns about impossible datetimes and malformed actor identifiers", () => {
+    const concept = parseConcept(`---
+type: Metric
+generated: { by: robot, at: 2026-02-30T00:00:00Z }
+verified:
+  - { by: ada, at: 2026-02-30T00:00:00Z }
+---
+`);
+
+    expect(validateConcept(concept).map((issue) => issue.code)).toEqual([
+      "frontmatter.generated.by.invalid",
+      "frontmatter.generated.at.invalid",
+      "frontmatter.verified.by.invalid",
+      "frontmatter.verified.at.invalid"
+    ]);
+  });
+
+  it("validates both representations of an attested computation", () => {
+    const issuesFor = (frontmatter: string, body = ""): string[] =>
+      validateConcept(
+        parseConcept(`---
+type: Attested Computation
+runtime: bigquery
+${frontmatter}---
+${body}`)
+      ).map((issue) => issue.code);
+
+    expect(issuesFor("")).toContain(
+      "frontmatter.attested.computation.required"
+    );
+    expect(issuesFor("computation: 42\n")).toContain(
+      "frontmatter.computation.invalid"
+    );
+    expect(issuesFor("computation: references/revenue.sql\n")).toEqual([]);
+    expect(
+      issuesFor("", "# Computation\n\n~~~sql\nselect 1\n~~~\n")
+    ).toEqual([]);
+    expect(
+      issuesFor("", "# Computation\n\n    select 1\n")
+    ).toEqual([]);
+    expect(
+      issuesFor(
+        "",
+        "# Computation\n\nNo code here.\n\n# Examples\n\n~~~sql\nselect 1\n~~~\n"
+      )
+    ).toContain("frontmatter.attested.computation.required");
+    expect(
+      issuesFor(
+        "computation: references/revenue.sql\n",
+        "# Computation\n\n~~~sql\nselect 1\n~~~\n"
+      )
+    ).toContain("frontmatter.attested.computation.conflict");
+    expect(
+      issuesFor(
+        "",
+        "# Computation\n\n~~~sql\nselect 1\n~~~\n\n~~~sql\nselect 2\n~~~\n"
+      )
+    ).toContain("frontmatter.attested.computation.multiple");
   });
 });
 

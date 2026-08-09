@@ -2,7 +2,8 @@ import { parseDocument, stringify } from "yaml";
 
 import type {
   OkfConcept,
-  OkfMetadata,
+  OkfRawConcept,
+  OkfRawMetadata,
   ParseConceptOptions
 } from "./types.js";
 
@@ -73,10 +74,10 @@ export function parseDocumentParts(
   return { metadata: parseYamlMapping(yaml), body };
 }
 
-function normalizeKnownFields(metadata: Record<string, unknown>): OkfMetadata {
+function normalizeKnownFields(metadata: Record<string, unknown>): OkfRawMetadata {
   const verified = metadata.verified;
   if (isRecord(verified)) {
-    return { ...metadata, verified: [verified] } as OkfMetadata;
+    return { ...metadata, verified: [verified] };
   }
   return metadata;
 }
@@ -84,9 +85,9 @@ function normalizeKnownFields(metadata: Record<string, unknown>): OkfMetadata {
 export function parseConcept(
   input: string,
   options: ParseConceptOptions = {}
-): OkfConcept {
+): OkfRawConcept {
   const { metadata, body } = parseDocumentParts(input, { required: true });
-  const concept: OkfConcept = {
+  const concept: OkfRawConcept = {
     metadata: normalizeKnownFields(metadata ?? {}),
     body
   };
@@ -100,7 +101,9 @@ export function parseConcept(
   return concept;
 }
 
-export function serializeConcept(concept: Pick<OkfConcept, "metadata" | "body">): string {
+export function serializeConcept<TMetadata extends Record<string, unknown>>(
+  concept: Pick<OkfConcept<TMetadata>, "metadata" | "body">
+): string {
   if (!isRecord(concept.metadata)) {
     throw new TypeError("Concept metadata must be a mapping.");
   }

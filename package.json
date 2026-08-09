@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "src",
     "README.md",
     "LICENSE",
     "NOTICE"
@@ -54,7 +55,7 @@
     "provenance": true
   },
   "dependencies": {
-    "mdast-util-from-markdown": "^2.0.3",
+    "marked": "^18.0.9",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

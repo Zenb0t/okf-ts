@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveTrustTier,
   getStatus,
+  isIsoDateTime,
+  isOkfActor,
   isStale,
   normalizeVerified
 } from "../src/index.js";
@@ -43,6 +45,75 @@ describe("trust helpers", () => {
     expect(normalizeVerified(verification)).toEqual([verification]);
     expect(normalizeVerified([verification])).toEqual([verification]);
     expect(normalizeVerified("invalid")).toEqual([]);
+  });
+
+  it("only derives trust from actors that follow the OKF convention", () => {
+    expect(
+      deriveTrustTier({
+        type: "Metric",
+        verified: [{ by: "ada", at: "2026-08-01T00:00:00Z" }]
+      })
+    ).toBe("unverified");
+    expect(isOkfActor("human:ada")).toBe(true);
+    expect(isOkfActor("process:finance-nightly")).toBe(true);
+    expect(isOkfActor("reference-agent/v1")).toBe(true);
+    expect(isOkfActor("ada")).toBe(false);
+    expect(isOkfActor("human:")).toBe(false);
+    expect(isOkfActor("agent/version/extra")).toBe(false);
+    expect(isOkfActor("process:nightly job")).toBe(false);
+    expect(isOkfActor("human:ada\n")).toBe(false);
+    expect(isOkfActor(42)).toBe(false);
+  });
+
+  it("only derives trust from complete verification events", () => {
+    expect(
+      deriveTrustTier({
+        verified: [{ by: "human:ada" }]
+      })
+    ).toBe("unverified");
+    expect(
+      deriveTrustTier({
+        verified: [{ by: "human:ada", at: "2026-02-30T00:00:00Z" }]
+      })
+    ).toBe("unverified");
+    expect(
+      deriveTrustTier({
+        verified: [
+          { by: "human:ada", at: "yesterday" },
+          { by: "process:nightly", at: "2026-08-01T00:00:00Z" }
+        ]
+      })
+    ).toBe("machine-confirmed");
+  });
+});
+
+describe("ISO datetime validation", () => {
+  it.each([
+    "2026-08-01T10:00Z",
+    "2026-08-01T10:00:00Z",
+    "2026-08-01T10:00:00.123456-07:00",
+    "2026-08-01T10:00:00",
+    "2026-08-01T24:00:00Z",
+    "2026-08-01T10:00:00+23:59"
+  ])("accepts %s", (value) => {
+    expect(isIsoDateTime(value)).toBe(true);
+  });
+
+  it.each([
+    "2026-02-30T00:00:00Z",
+    "2026-08-01T25:00:00Z",
+    "2026-08-01T10:60:00Z",
+    "2026-08-01T10:00:61Z",
+    "2026-08-01T24:00:00.001Z",
+    "2026-08-01T10:00:00+24:00",
+    "2026-08-01T10:00:00Z\n",
+    "2026-08-01"
+  ])("rejects %s", (value) => {
+    expect(isIsoDateTime(value)).toBe(false);
+  });
+
+  it("rejects non-string values", () => {
+    expect(isIsoDateTime(null)).toBe(false);
   });
 });
 

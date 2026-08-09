@@ -21,6 +21,7 @@ import {
   deriveTrustTier,
   isConformant,
   isStale,
+  isWellFormedConcept,
   parseConcept,
   serializeConcept,
   validateConcept
@@ -45,10 +46,17 @@ console.log(isConformant(issues)); // true
 console.log(deriveTrustTier(concept)); // human-reviewed
 console.log(isStale(concept, new Date("2027-01-01T00:00:00Z"))); // true
 
+if (isWellFormedConcept(concept)) {
+  // Known OKF fields are now narrowed from unknown to their validated types.
+  console.log(concept.metadata.title?.toUpperCase());
+}
+
 const markdown = serializeConcept(concept);
 ```
 
 A bare `verified` mapping is normalized to a one-element list while parsing, as required for OKF consumers. Unknown types and frontmatter keys are preserved when round-tripping.
+
+Parsed frontmatter is intentionally typed as `Record<string, unknown>` because YAML is untrusted input. `isWellFormedConcept` validates every known field and narrows the concept to `WellFormedOkfConcept`. `isConformant` remains the less restrictive specification verdict: a concept may be conformant while still carrying warnings in an optional metadata family.
 
 ## Read a bundle
 
@@ -65,6 +73,8 @@ console.log(graph.edges.filter((edge) => !edge.exists));
 ```
 
 `readBundle` scans `.md` files recursively, skips symbolic links, assigns concept IDs from bundle-relative paths, and collects parse or conformance issues without aborting the entire bundle. Broken cross-links are retained in the graph with `exists: false`, because OKF explicitly permits them.
+
+The repository's [`examples/knowledge`](examples/knowledge) directory is a complete OKF 0.2 bundle containing linked Metric, Policy, Reference, and Attested Computation documents. The test suite loads this bundle from disk, validates every document, builds its graph, and derives its trust tiers so the project continuously dogfoods its public APIs.
 
 ## Validation model
 
@@ -83,10 +93,13 @@ Use `isConformant(issues)` when you only need the hard OKF verdict. Inspect all 
 | `parseConcept` | Parse YAML frontmatter and Markdown body. |
 | `serializeConcept` | Serialize a concept while preserving extension data. |
 | `validateConcept` | Return hard errors and soft-guidance warnings. |
+| `isWellFormedConcept` | Validate all known fields and narrow raw metadata types. |
 | `validateBundle` | Validate loaded concepts plus reserved documents. |
 | `deriveTrustTier` | Return `unverified`, `machine-confirmed`, or `human-reviewed`. |
 | `isStale` | Apply the absolute `stale_after` date rule. |
 | `getStatus` | Return lifecycle status, defaulting to `stable`. |
+| `isOkfActor` | Check the OKF human, process, or tool actor convention. |
+| `isIsoDate` / `isIsoDateTime` | Strictly validate OKF date and datetime values. |
 | `buildGraph` | Build directed link and internal-source edges. |
 | `extractMarkdownLinks` | Extract real Markdown links while ignoring code and images. |
 | `readBundle` | Recursively load a directory via `okf-ts/node`. |

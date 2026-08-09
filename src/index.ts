@@ -7,17 +7,19 @@ export {
   deriveTrustTier,
   getStatus,
   isIsoDate,
+  isIsoDateTime,
+  isOkfActor,
   isStale,
   normalizeVerified
 } from "./lifecycle.js";
 export {
   extractMarkdownHeadings,
-  extractMarkdownLinks,
-  parseMarkdown
+  extractMarkdownLinks
 } from "./markdown.js";
 export { buildGraph } from "./graph.js";
 export {
   isConformant,
+  isWellFormedConcept,
   validateBundle,
   validateConcept,
   validateReservedDocument

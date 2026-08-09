@@ -1,9 +1,9 @@
 import { extractMarkdownLinks } from "./markdown.js";
 import type {
-  OkfConcept,
   OkfGraph,
   OkfGraphEdge,
-  OkfGraphEdgeKind
+  OkfGraphEdgeKind,
+  OkfRawConcept
 } from "./types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,7 +51,7 @@ function internalConceptId(from: string, target: string): string | undefined {
   return normalizePath(segments);
 }
 
-function sourceTargets(concept: OkfConcept): string[] {
+function sourceTargets(concept: OkfRawConcept): string[] {
   const sources = concept.metadata.sources;
   if (!Array.isArray(sources)) {
     return [];
@@ -62,9 +62,9 @@ function sourceTargets(concept: OkfConcept): string[] {
     .filter((resource): resource is string => typeof resource === "string");
 }
 
-export function buildGraph(concepts: readonly OkfConcept[]): OkfGraph {
+export function buildGraph(concepts: readonly OkfRawConcept[]): OkfGraph {
   const nodes = concepts
-    .filter((concept): concept is OkfConcept & { id: string } =>
+    .filter((concept): concept is OkfRawConcept & { id: string } =>
       Boolean(concept.id)
     )
     .map((concept) => ({ id: concept.id, concept }));
@@ -72,7 +72,7 @@ export function buildGraph(concepts: readonly OkfConcept[]): OkfGraph {
   const edges: OkfGraphEdge[] = [];
 
   const addEdges = (
-    concept: OkfConcept & { id: string },
+    concept: OkfRawConcept & { id: string },
     targets: readonly string[],
     kind: OkfGraphEdgeKind
   ): void => {

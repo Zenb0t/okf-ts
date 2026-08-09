@@ -1,39 +1,59 @@
-import { fromMarkdown } from "mdast-util-from-markdown";
+import { Marked } from "marked";
 
-interface MarkdownNode {
-  type: string;
-  url?: string;
-  value?: string;
-  depth?: number;
-  children?: MarkdownNode[];
+import type { Token, TokensList } from "marked";
+
+const markdownParser = new Marked();
+
+function parseMarkdown(markdown: string): TokensList {
+  return markdownParser.lexer(markdown);
 }
 
-function walk(node: MarkdownNode, visit: (node: MarkdownNode) => void): void {
-  visit(node);
-  for (const child of node.children ?? []) {
-    walk(child, visit);
+function tokenText(token: Token): string {
+  if ("tokens" in token && Array.isArray(token.tokens)) {
+    return token.tokens.map(tokenText).join("");
   }
-}
-
-function nodeText(node: MarkdownNode): string {
-  if (typeof node.value === "string") {
-    return node.value;
+  if ("text" in token && typeof token.text === "string") {
+    return token.text;
   }
-  return (node.children ?? []).map(nodeText).join("");
-}
-
-export function parseMarkdown(markdown: string): MarkdownNode {
-  return fromMarkdown(markdown);
+  return "";
 }
 
 export function extractMarkdownLinks(markdown: string): string[] {
   const links: string[] = [];
-  walk(parseMarkdown(markdown), (node) => {
-    if (node.type === "link" && typeof node.url === "string") {
-      links.push(node.url);
+  void markdownParser.walkTokens(parseMarkdown(markdown), (token) => {
+    if (token.type === "link" && typeof token.href === "string") {
+      links.push(token.href);
     }
   });
   return links;
+}
+
+export function countMarkdownCodeBlocksUnderHeading(
+  markdown: string,
+  headingText: string,
+  headingDepth = 1
+): number {
+  const tokens = parseMarkdown(markdown);
+  let insideSection = false;
+  let count = 0;
+
+  for (const token of tokens) {
+    if (token.type === "heading") {
+      if (
+        token.depth === headingDepth &&
+        tokenText(token).trim() === headingText
+      ) {
+        insideSection = true;
+        continue;
+      }
+      if (insideSection && token.depth <= headingDepth) {
+        insideSection = false;
+      }
+    } else if (insideSection && token.type === "code") {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 export interface MarkdownHeading {
@@ -43,9 +63,12 @@ export interface MarkdownHeading {
 
 export function extractMarkdownHeadings(markdown: string): MarkdownHeading[] {
   const headings: MarkdownHeading[] = [];
-  walk(parseMarkdown(markdown), (node) => {
-    if (node.type === "heading" && typeof node.depth === "number") {
-      headings.push({ depth: node.depth, text: nodeText(node).trim() });
+  void markdownParser.walkTokens(parseMarkdown(markdown), (token) => {
+    if (token.type === "heading" && typeof token.depth === "number") {
+      headings.push({
+        depth: token.depth,
+        text: tokenText(token).trim()
+      });
     }
   });
   return headings;

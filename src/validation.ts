@@ -1,10 +1,14 @@
-import { extractMarkdownHeadings } from "./markdown.js";
-import { isIsoDate, normalizeVerified } from "./lifecycle.js";
+import {
+  countMarkdownCodeBlocksUnderHeading,
+  extractMarkdownHeadings
+} from "./markdown.js";
+import { isIsoDate, isIsoDateTime, isOkfActor } from "./lifecycle.js";
 import type {
   OkfBundle,
-  OkfConcept,
   OkfIssue,
-  OkfReservedDocument
+  OkfRawConcept,
+  OkfReservedDocument,
+  WellFormedOkfConcept
 } from "./types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -15,19 +19,11 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isIsoDateTime(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^\d{4}-\d{2}-\d{2}T/u.test(value) &&
-    !Number.isNaN(Date.parse(value))
-  );
-}
-
 function warning(
   issues: OkfIssue[],
   code: string,
   message: string,
-  concept: OkfConcept,
+  concept: OkfRawConcept,
   field: string
 ): void {
   issues.push({
@@ -42,7 +38,7 @@ function warning(
 function validateDateRange(
   value: unknown,
   issues: OkfIssue[],
-  concept: OkfConcept,
+  concept: OkfRawConcept,
   field: string
 ): void {
   if (!isRecord(value)) {
@@ -65,7 +61,7 @@ function validateDateRange(
 function validateSources(
   metadata: Record<string, unknown>,
   issues: OkfIssue[],
-  concept: OkfConcept
+  concept: OkfRawConcept
 ): void {
   if (metadata.sources === undefined) {
     return;
@@ -106,6 +102,17 @@ function validateSources(
         ids.add(source.id);
       }
     }
+    for (const key of ["title", "author"] as const) {
+      if (source[key] !== undefined && !isNonEmptyString(source[key])) {
+        warning(
+          issues,
+          `frontmatter.source.${key}.invalid`,
+          `Source ${key} must be a non-empty string when present.`,
+          concept,
+          `${field}.${key}`
+        );
+      }
+    }
     if (
       source.usage_count !== undefined &&
       (typeof source.usage_count !== "number" ||
@@ -138,7 +145,7 @@ function validateSources(
 function validateTrust(
   metadata: Record<string, unknown>,
   issues: OkfIssue[],
-  concept: OkfConcept
+  concept: OkfRawConcept
 ): void {
   if (metadata.generated !== undefined) {
     if (!isRecord(metadata.generated)) {
@@ -149,6 +156,14 @@ function validateTrust(
           issues,
           "frontmatter.generated.by.required",
           "generated.by must identify an actor.",
+          concept,
+          "generated.by"
+        );
+      } else if (!isOkfActor(metadata.generated.by)) {
+        warning(
+          issues,
+          "frontmatter.generated.by.invalid",
+          "generated.by must follow the OKF actor convention.",
           concept,
           "generated.by"
         );
@@ -171,13 +186,32 @@ function validateTrust(
       warning(issues, "frontmatter.verified.invalid", "verified must be a mapping or list.", concept, "verified");
       return;
     }
-    normalizeVerified(raw).forEach((verification, index) => {
+    const verifications: unknown[] = Array.isArray(raw) ? raw : [raw];
+    verifications.forEach((verification, index) => {
       const field = `verified[${String(index)}]`;
+      if (!isRecord(verification)) {
+        warning(
+          issues,
+          "frontmatter.verification.invalid",
+          "Each verification must be a mapping.",
+          concept,
+          field
+        );
+        return;
+      }
       if (!isNonEmptyString(verification.by)) {
         warning(
           issues,
           "frontmatter.verified.by.required",
           "Verification by must identify an actor.",
+          concept,
+          `${field}.by`
+        );
+      } else if (!isOkfActor(verification.by)) {
+        warning(
+          issues,
+          "frontmatter.verified.by.invalid",
+          "Verification by must follow the OKF actor convention.",
           concept,
           `${field}.by`
         );
@@ -206,9 +240,10 @@ function validateTrust(
 function validateComputation(
   metadata: Record<string, unknown>,
   issues: OkfIssue[],
-  concept: OkfConcept
+  concept: OkfRawConcept
 ): void {
-  if (metadata.type === "Attested Computation" && !isNonEmptyString(metadata.runtime)) {
+  const isAttested = metadata.type === "Attested Computation";
+  if (isAttested && !isNonEmptyString(metadata.runtime)) {
     warning(
       issues,
       "frontmatter.attested.runtime.required",
@@ -216,6 +251,59 @@ function validateComputation(
       concept,
       "runtime"
     );
+  } else if (metadata.runtime !== undefined && !isNonEmptyString(metadata.runtime)) {
+    warning(
+      issues,
+      "frontmatter.runtime.invalid",
+      "runtime must be a non-empty string when present.",
+      concept,
+      "runtime"
+    );
+  }
+
+  const computation = metadata.computation;
+  const hasComputationPath = isNonEmptyString(computation);
+  if (computation !== undefined && !hasComputationPath) {
+    warning(
+      issues,
+      "frontmatter.computation.invalid",
+      "computation must be a non-empty path when present.",
+      concept,
+      "computation"
+    );
+  }
+
+  if (isAttested) {
+    const inlineBlocks = countMarkdownCodeBlocksUnderHeading(
+      concept.body,
+      "Computation"
+    );
+    if (hasComputationPath && inlineBlocks > 0) {
+      warning(
+        issues,
+        "frontmatter.attested.computation.conflict",
+        "Use either a computation path or an inline computation code block, not both.",
+        concept,
+        "computation"
+      );
+    } else if (computation === undefined && inlineBlocks === 0) {
+      warning(
+        issues,
+        "frontmatter.attested.computation.required",
+        "An Attested Computation should provide a computation path or an inline code block.",
+        concept,
+        "computation"
+      );
+    }
+    if (inlineBlocks > 1) {
+      warning(
+        issues,
+        "frontmatter.attested.computation.multiple",
+        "An inline Attested Computation should contain exactly one code block.",
+        concept,
+        "computation"
+      );
+    }
   }
 
   if (metadata.parameters !== undefined) {
@@ -282,7 +370,7 @@ function validateComputation(
   }
 }
 
-export function validateConcept(concept: OkfConcept): OkfIssue[] {
+export function validateConcept(concept: OkfRawConcept): OkfIssue[] {
   const issues: OkfIssue[] = [];
   const metadata: Record<string, unknown> = concept.metadata;
 
@@ -344,6 +432,12 @@ export function validateConcept(concept: OkfConcept): OkfIssue[] {
   validateTrust(metadata, issues, concept);
   validateComputation(metadata, issues, concept);
   return issues;
+}
+
+export function isWellFormedConcept(
+  concept: OkfRawConcept
+): concept is WellFormedOkfConcept {
+  return validateConcept(concept).length === 0;
 }
 
 function reservedIssue(

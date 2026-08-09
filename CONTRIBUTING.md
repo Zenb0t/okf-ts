@@ -4,7 +4,7 @@ Contributions are welcome through focused issues and pull requests.
 
 ## Development workflow
 
-1. Install Node.js 20 or newer and run `npm ci`.
+1. Install Node.js 20.19+, 22.13+, or 24+ and run `npm ci`.
 2. Add or update a failing test that describes the behavior being changed.
 3. Make the smallest implementation change that passes the test.
 4. Run `npm run check` before opening a pull request.

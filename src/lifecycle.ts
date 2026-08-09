@@ -1,11 +1,11 @@
 import type {
-  OkfConcept,
+  OkfRawConcept,
   OkfStatus,
   OkfVerification,
   TrustTier
 } from "./types.js";
 
-type LifecycleSubject = OkfConcept | Record<string, unknown>;
+type LifecycleSubject = OkfRawConcept | Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -18,23 +18,41 @@ function metadataOf(subject: LifecycleSubject): Record<string, unknown> {
   return isRecord(subject) ? subject : {};
 }
 
-export function normalizeVerified(value: unknown): OkfVerification[] {
+export function normalizeVerified(
+  value: OkfVerification | readonly OkfVerification[]
+): OkfVerification[];
+export function normalizeVerified(value: unknown): Record<string, unknown>[];
+export function normalizeVerified(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
-    return value.filter(isRecord) as OkfVerification[];
+    return value.filter(isRecord);
   }
-  return isRecord(value) ? [value as OkfVerification] : [];
+  return isRecord(value) ? [value] : [];
+}
+
+export function isOkfActor(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return (
+    /^(?:human|process):\S+$/u.test(value) ||
+    /^[^/\s]+\/[^/\s]+$/u.test(value)
+  );
 }
 
 export function deriveTrustTier(subject: LifecycleSubject): TrustTier {
-  const verifications = normalizeVerified(metadataOf(subject).verified).filter(
-    (verification) =>
-      typeof verification.by === "string" && verification.by.trim().length > 0
-  );
+  const actors = normalizeVerified(metadataOf(subject).verified)
+    .flatMap((verification) =>
+      typeof verification.by === "string" &&
+      isOkfActor(verification.by) &&
+      isIsoDateTime(verification.at)
+        ? [verification.by]
+        : []
+    );
 
-  if (verifications.length === 0) {
+  if (actors.length === 0) {
     return "unverified";
   }
-  return verifications.some((verification) => verification.by.startsWith("human:"))
+  return actors.some((actor) => actor.startsWith("human:"))
     ? "human-reviewed"
     : "machine-confirmed";
 }
@@ -46,6 +64,34 @@ export function isIsoDate(value: unknown): boolean {
 
   const date = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function isIsoDateTime(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:Z|[+-](\d{2}):(\d{2}))?$/u.exec(
+    value
+  );
+  if (match === null || !isIsoDate(match[1])) {
+    return false;
+  }
+
+  const hour = Number(match[2]);
+  const minute = Number(match[3]);
+  const second = match[4] === undefined ? 0 : Number(match[4]);
+  const fraction = match[5];
+  const offsetHour = match[6] === undefined ? 0 : Number(match[6]);
+  const offsetMinute = match[7] === undefined ? 0 : Number(match[7]);
+  const hasNonZeroFraction = fraction !== undefined && /[1-9]/u.test(fraction);
+
+  if (minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59) {
+    return false;
+  }
+  return (
+    hour < 24 ||
+    (hour === 24 && minute === 0 && second === 0 && !hasNonZeroFraction)
+  );
 }
 
 export function isStale(subject: LifecycleSubject, today = new Date()): boolean {

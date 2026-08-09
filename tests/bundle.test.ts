@@ -1,12 +1,21 @@
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  buildGraph,
+  deriveTrustTier,
+  isWellFormedConcept
+} from "../src/index.js";
 import { readBundle } from "../src/node.js";
 
 const temporaryRoots: string[] = [];
+const dogfoodBundleRoot = fileURLToPath(
+  new URL("../examples/knowledge", import.meta.url)
+);
 
 async function makeBundle(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "okf-ts-"));
@@ -21,6 +30,102 @@ afterEach(async () => {
 });
 
 describe("readBundle", () => {
+  it("loads and validates the repository dogfood bundle", async () => {
+    const bundle = await readBundle(dogfoodBundleRoot);
+
+    expect(bundle.version).toBe("0.2");
+    expect(bundle.issues).toEqual([]);
+    expect(bundle.concepts.map((concept) => concept.id)).toEqual([
+      "computations/monthly-recurring-revenue",
+      "metrics/monthly-recurring-revenue",
+      "policies/revenue-recognition",
+      "references/billing-events"
+    ]);
+    expect(bundle.concepts.every(isWellFormedConcept)).toBe(true);
+
+    const graph = buildGraph(bundle.concepts);
+    expect(graph.nodes).toHaveLength(4);
+    expect(graph.edges).toEqual([
+      {
+        from: "computations/monthly-recurring-revenue",
+        to: "metrics/monthly-recurring-revenue",
+        kind: "link",
+        target: "../metrics/monthly-recurring-revenue.md",
+        exists: true
+      },
+      {
+        from: "computations/monthly-recurring-revenue",
+        to: "references/billing-events",
+        kind: "source",
+        target: "../references/billing-events.md",
+        exists: true
+      },
+      {
+        from: "metrics/monthly-recurring-revenue",
+        to: "policies/revenue-recognition",
+        kind: "link",
+        target: "../policies/revenue-recognition.md",
+        exists: true
+      },
+      {
+        from: "metrics/monthly-recurring-revenue",
+        to: "computations/monthly-recurring-revenue",
+        kind: "link",
+        target: "../computations/monthly-recurring-revenue.md",
+        exists: true
+      },
+      {
+        from: "metrics/monthly-recurring-revenue",
+        to: "references/billing-events",
+        kind: "source",
+        target: "../references/billing-events.md",
+        exists: true
+      },
+      {
+        from: "policies/revenue-recognition",
+        to: "metrics/monthly-recurring-revenue",
+        kind: "link",
+        target: "../metrics/monthly-recurring-revenue.md",
+        exists: true
+      },
+      {
+        from: "policies/revenue-recognition",
+        to: "references/billing-events",
+        kind: "link",
+        target: "../references/billing-events.md",
+        exists: true
+      },
+      {
+        from: "references/billing-events",
+        to: "metrics/monthly-recurring-revenue",
+        kind: "link",
+        target: "../metrics/monthly-recurring-revenue.md",
+        exists: true
+      }
+    ]);
+
+    expect(
+      bundle.concepts.map((concept) => ({
+        id: concept.id,
+        trust: deriveTrustTier(concept)
+      }))
+    ).toEqual([
+      {
+        id: "computations/monthly-recurring-revenue",
+        trust: "machine-confirmed"
+      },
+      {
+        id: "metrics/monthly-recurring-revenue",
+        trust: "human-reviewed"
+      },
+      {
+        id: "policies/revenue-recognition",
+        trust: "human-reviewed"
+      },
+      { id: "references/billing-events", trust: "unverified" }
+    ]);
+  });
+
   it("loads a valid hierarchy and declares its root version", async () => {
     const root = await makeBundle();
     await mkdir(join(root, "metrics"));
