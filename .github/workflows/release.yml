@@ -17,11 +17,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Caching is deliberately off: npm's trusted-publishing guidance asks for
+      # an uncached dependency tree in release builds.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      # Trusted publishing requires npm >= 11.5.1. Node 24 already ships an
+      # 11.x line, but upgrade explicitly so a runner image change cannot
+      # silently drop the job below the minimum.
+      - run: npm install -g npm@latest
 
       - name: Verify tag matches package version
         run: |
@@ -34,8 +40,8 @@ jobs:
 
       - run: npm ci
 
-      # prepublishOnly runs the full check suite (lint, typecheck, coverage, build)
-      # before anything is packed, so dist/ is produced here rather than committed.
+      # No NODE_AUTH_TOKEN. GitHub mints a short-lived OIDC token that npm
+      # verifies against the trusted publisher registered for this repository
+      # and workflow filename, so no long-lived secret exists to leak.
+      # prepublishOnly runs the full check suite and builds dist/ before packing.
       - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
