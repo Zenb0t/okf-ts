@@ -1,0 +1,18 @@
+{
+  "name": "okf-docs",
+  "version": "0.1.0",
+  "description": "Maintain documentation as an Open Knowledge Format bundle: audit staleness, broken links, and source drift, then repair docs with machine-attributed provenance.",
+  "author": {
+    "name": "Felipe Ribeiro"
+  },
+  "homepage": "https://github.com/Zenb0t/okf-ts#readme",
+  "repository": "https://github.com/Zenb0t/okf-ts",
+  "license": "Apache-2.0",
+  "keywords": [
+    "documentation",
+    "okf",
+    "open-knowledge-format",
+    "provenance",
+    "staleness"
+  ]
+}

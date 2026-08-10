@@ -1,0 +1,17 @@
+{
+  "description": "Protects the OKF trust model by preventing an agent from stamping its own work as human-reviewed.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/block-human-stamp.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

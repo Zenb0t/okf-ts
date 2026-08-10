@@ -1,6 +1,6 @@
 {
   "name": "okf-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A small, permissive TypeScript toolkit for Open Knowledge Format bundles.",
   "type": "module",
   "sideEffects": false,
@@ -12,7 +12,14 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     }
+  },
+  "bin": {
+    "okf": "./dist/bin.js"
   },
   "files": [
     "dist",

@@ -1,4 +1,5 @@
 import { extractMarkdownLinks } from "./markdown.js";
+import { resolveRelativePath } from "./paths.js";
 import type {
   OkfGraph,
   OkfGraphEdge,
@@ -10,45 +11,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizePath(segments: string[]): string | undefined {
-  const normalized: string[] = [];
-  for (const segment of segments) {
-    if (segment === "" || segment === ".") {
-      continue;
-    }
-    if (segment === "..") {
-      if (normalized.length === 0) {
-        return undefined;
-      }
-      normalized.pop();
-      continue;
-    }
-    normalized.push(segment);
-  }
-  return normalized.join("/");
-}
-
 function internalConceptId(from: string, target: string): string | undefined {
-  if (
-    target.startsWith("#") ||
-    target.startsWith("?") ||
-    target.startsWith("//") ||
-    /^[a-z][a-z\d+.-]*:/i.test(target)
-  ) {
-    return undefined;
-  }
-
-  const path = target.split(/[?#]/u, 1)[0]?.replaceAll("\\", "/");
-  if (!path?.endsWith(".md")) {
-    return undefined;
-  }
-
-  const withoutSuffix = path.slice(0, -3);
-  const base = from.split("/").slice(0, -1);
-  const segments = withoutSuffix.startsWith("/")
-    ? withoutSuffix.slice(1).split("/")
-    : [...base, ...withoutSuffix.split("/")];
-  return normalizePath(segments);
+  const resolved = resolveRelativePath(from, target);
+  return resolved?.endsWith(".md") === true ? resolved.slice(0, -3) : undefined;
 }
 
 function sourceTargets(concept: OkfRawConcept): string[] {
