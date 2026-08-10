@@ -92,16 +92,21 @@ Use `isConformant(issues)` when you only need the hard OKF verdict. Inspect all 
 | --- | --- |
 | `parseConcept` | Parse YAML frontmatter and Markdown body. |
 | `serializeConcept` | Serialize a concept while preserving extension data. |
+| `OkfParseError` | Error thrown for malformed frontmatter or YAML. |
 | `validateConcept` | Return hard errors and soft-guidance warnings. |
 | `isWellFormedConcept` | Validate all known fields and narrow raw metadata types. |
 | `validateBundle` | Validate loaded concepts plus reserved documents. |
+| `validateReservedDocument` | Validate a single `index.md` or `log.md`. |
+| `isConformant` | Reduce a list of issues to the hard OKF verdict. |
 | `deriveTrustTier` | Return `unverified`, `machine-confirmed`, or `human-reviewed`. |
+| `normalizeVerified` | Normalize `verified` to a list, whether given as a mapping or list. |
 | `isStale` | Apply the absolute `stale_after` date rule. |
 | `getStatus` | Return lifecycle status, defaulting to `stable`. |
 | `isOkfActor` | Check the OKF human, process, or tool actor convention. |
 | `isIsoDate` / `isIsoDateTime` | Strictly validate OKF date and datetime values. |
 | `buildGraph` | Build directed link and internal-source edges. |
 | `extractMarkdownLinks` | Extract real Markdown links while ignoring code and images. |
+| `extractMarkdownHeadings` | Extract heading depths and text. |
 | `readBundle` | Recursively load a directory via `okf-ts/node`. |
 
 The library describes attested computation contracts but does not execute computations or attesters. Runtime receipt and verdict protocols are intentionally deferred by the v0.2 specification.
