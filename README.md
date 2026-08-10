@@ -76,6 +76,44 @@ console.log(graph.edges.filter((edge) => !edge.exists));
 
 The repository's [`examples/knowledge`](examples/knowledge) directory is a complete OKF 0.2 bundle containing linked Metric, Policy, Reference, and Attested Computation documents. The test suite loads this bundle from disk, validates every document, builds its graph, and derives its trust tiers so the project continuously dogfoods its public APIs.
 
+## Command line
+
+```sh
+npx okf-ts report ./knowledge          # work queue: what needs attention and why
+npx okf-ts check  ./knowledge          # hard conformance gate; exits 1 on errors
+npx okf-ts stamp  ./knowledge/mrr.md --generated process:my-pipeline
+```
+
+`report` combines five signals into one ranked list:
+
+| Finding | Severity | Meaning |
+| --- | --- | --- |
+| `conformance` | error / warning | Issues from `validateBundle`. |
+| `source-drift` | warning | A `sources[].resource` changed in git after the concept was last confirmed. |
+| `stale` | warning | The absolute `stale_after` date has passed. |
+| `broken-link` | warning | A link or source points at a concept the bundle does not contain. |
+| `unverified` | info | A non-draft concept carries no valid `verified` entry. |
+
+Source drift is the highest-signal check because it is derived rather than declared:
+point a document at the file whose change would make it wrong, and staleness stops being
+a guess.
+
+```yaml
+sources:
+  - resource: ../src/node.ts
+```
+
+Source targets may leave the bundle root, so a `docs/` bundle can cite `../src`. Concept
+links may not — a concept outside the bundle has no identity. Add `--json` for machine
+consumption, `--no-git` to skip drift detection, and `--fail-on-warning` to gate CI on
+more than hard conformance.
+
+`stamp` refuses to write `human:` actors. Machine authorship is recorded as `generated`;
+human verification is meant to come from a reviewed commit, so that `deriveTrustTier`
+keeps meaning something. The repository's
+[`plugin/`](https://github.com/Zenb0t/okf-ts/tree/main/plugin) directory ships a Claude
+Code plugin that enforces the same boundary when an agent edits documentation directly.
+
 ## Validation model
 
 OKF v0.2 has a deliberately small hard-conformance surface. `okf-ts` reports:
@@ -108,6 +146,11 @@ Use `isConformant(issues)` when you only need the hard OKF verdict. Inspect all 
 | `extractMarkdownLinks` | Extract real Markdown links while ignoring code and images. |
 | `extractMarkdownHeadings` | Extract heading depths and text. |
 | `readBundle` | Recursively load a directory via `okf-ts/node`. |
+| `buildReport` | Combine conformance, staleness, links, drift, and trust into one report. |
+| `collectSourceRefs` | Resolve `sources[].resource` targets, including non-Markdown ones. |
+| `lastConfirmedAt` | Return the newest `verified.at`, falling back to `generated.at`. |
+| `resolveRelativePath` | Resolve a link within the bundle root. |
+| `resolveSourcePath` | Resolve a source target, allowing it to leave the bundle root. |
 
 The library describes attested computation contracts but does not execute computations or attesters. Runtime receipt and verdict protocols are intentionally deferred by the v0.2 specification.
 

@@ -18,6 +18,24 @@ export {
 } from "./markdown.js";
 export { buildGraph } from "./graph.js";
 export {
+  normalizeSegments,
+  resolveRelativePath,
+  resolveSourcePath
+} from "./paths.js";
+export {
+  buildReport,
+  collectSourceRefs,
+  lastConfirmedAt
+} from "./report.js";
+export type {
+  BuildReportOptions,
+  OkfFinding,
+  OkfFindingKind,
+  OkfFindingSeverity,
+  OkfReport,
+  OkfSourceRef
+} from "./report.js";
+export {
   isConformant,
   isWellFormedConcept,
   validateBundle,
