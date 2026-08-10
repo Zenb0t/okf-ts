@@ -29,7 +29,8 @@ jobs:
       # silently drop the job below the minimum.
       - run: npm install -g npm@latest
 
-      - name: Verify tag matches package version
+      - name: Verify tag matches package version and select dist-tag
+        id: release
         run: |
           tag="${GITHUB_REF_NAME#v}"
           version="$(node -p 'require("./package.json").version')"
@@ -37,6 +38,15 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package.json version $version." >&2
             exit 1
           fi
+          # A semver prerelease carries a hyphen (1.0.0-rc.1). Publishing one
+          # without an explicit dist-tag would move `latest`, so a plain
+          # `npm install okf-ts` would start resolving to the prerelease.
+          case "$version" in
+            *-*) dist_tag=next ;;
+            *) dist_tag=latest ;;
+          esac
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          echo "Publishing $version to the $dist_tag dist-tag."
 
       - run: npm ci
 
@@ -44,4 +54,4 @@ jobs:
       # verifies against the trusted publisher registered for this repository
       # and workflow filename, so no long-lived secret exists to leak.
       # prepublishOnly runs the full check suite and builds dist/ before packing.
-      - run: npm publish
+      - run: npm publish --tag "${{ steps.release.outputs.dist_tag }}"
