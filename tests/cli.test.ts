@@ -253,6 +253,125 @@ describe("okf stamp", () => {
   });
 });
 
+describe("okf stamp — replacing existing provenance", () => {
+  it("replaces a previous generation stamp without disturbing other fields", async () => {
+    const root = await makeBundle();
+    const file = join(root, "loader.md");
+    await writeFile(
+      file,
+      "---\ntype: Reference\ntitle: Loader\ngenerated:\n  by: process:old-pipeline\n  at: 2020-01-01T00:00:00Z\nverified:\n  by: human:ada\n  at: 2026-01-01T00:00:00Z\nstale_after: 2030-01-01\nx-owner: platform\n---\n# Contract\n\nBody.\n"
+    );
+
+    const cli = capture();
+    expect(
+      await runCli(
+        [
+          "stamp",
+          file,
+          "--generated",
+          "process:claude-code",
+          "--at",
+          "2026-08-10T09:00:00Z"
+        ],
+        cli.deps
+      )
+    ).toBe(0);
+
+    const written = await readFile(file, "utf8");
+    expect(written).toContain("by: process:claude-code");
+    expect(written).not.toContain("process:old-pipeline");
+    // A human verification already on the document is the reviewer's, not ours,
+    // so stamping authorship must leave it exactly as it was.
+    expect(written).toContain("by: human:ada");
+    expect(written).toContain("stale_after: 2030-01-01");
+    expect(written).toContain("x-owner: platform");
+    expect(written).toContain("# Contract");
+  });
+
+  it("keeps an existing expiry when none is supplied", async () => {
+    const root = await makeBundle();
+    const file = join(root, "loader.md");
+    await writeFile(
+      file,
+      "---\ntype: Reference\nstale_after: 2030-01-01\n---\n# Contract\n"
+    );
+
+    const cli = capture();
+    expect(
+      await runCli(["stamp", file, "--generated", "process:ci"], cli.deps)
+    ).toBe(0);
+    expect(await readFile(file, "utf8")).toContain("stale_after: 2030-01-01");
+  });
+
+  it("fails cleanly on a document with no frontmatter", async () => {
+    const root = await makeBundle();
+    const file = join(root, "plain.md");
+    await writeFile(file, "# Just a heading\n\nNo frontmatter here.\n");
+
+    const cli = capture();
+    expect(
+      await runCli(["stamp", file, "--generated", "process:ci"], cli.deps)
+    ).toBe(1);
+    expect(cli.err()).not.toBe("");
+    expect(await readFile(file, "utf8")).toBe("# Just a heading\n\nNo frontmatter here.\n");
+  });
+
+  it("fails cleanly when the file does not exist", async () => {
+    const cli = capture();
+    expect(
+      await runCli(
+        ["stamp", join(await makeBundle(), "missing.md"), "--generated", "process:ci"],
+        cli.deps
+      )
+    ).toBe(1);
+    expect(cli.err()).not.toBe("");
+  });
+});
+
+describe("okf on degenerate bundles", () => {
+  it("reports an empty directory without crashing", async () => {
+    const root = await makeBundle();
+    const cli = capture();
+
+    expect(await runCli(["report", root], cli.deps)).toBe(0);
+    expect(cli.out()).toContain("0 concepts");
+    expect(cli.out()).toContain("no findings");
+  });
+
+  it("passes check on a bundle whose only issues are warnings", async () => {
+    const root = await makeBundle();
+    await writeFile(
+      join(root, "revenue.md"),
+      "---\ntype: Metric\ntitle: Revenue\nverified:\n  by: not-an-actor\n  at: nonsense\n---\n# Definition\n"
+    );
+
+    const cli = capture();
+    const code = await runCli(["check", root, "--json"], cli.deps);
+    const result = JSON.parse(cli.out()) as {
+      conformant: boolean;
+      errors: unknown[];
+      warnings: unknown[];
+    };
+
+    expect(code).toBe(0);
+    expect(result.conformant).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("emits valid JSON for an empty bundle", async () => {
+    const root = await makeBundle();
+    const cli = capture();
+
+    expect(await runCli(["report", root, "--json"], cli.deps)).toBe(0);
+    expect(JSON.parse(cli.out())).toMatchObject({
+      conceptCount: 0,
+      findings: [],
+      trust: { "human-reviewed": 0, "machine-confirmed": 0, unverified: 0 }
+    });
+  });
+});
+
 describe("okf usage", () => {
   it("explains itself and rejects unknown commands", async () => {
     const bare = capture();
