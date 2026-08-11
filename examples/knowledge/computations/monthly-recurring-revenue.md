@@ -11,10 +11,10 @@ sources:
     title: Billing events contract
 generated:
   by: process:finance-pipeline
-  at: 2026-08-09T12:00:00Z
+  at: 2026-08-10T00:00:00Z
 verified:
   by: process:finance-quality-check
-  at: 2026-08-09T12:05:00Z
+  at: 2026-08-10T00:05:00Z
 status: stable
 runtime: SQL
 parameters:

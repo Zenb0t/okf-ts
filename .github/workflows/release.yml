@@ -57,6 +57,14 @@ jobs:
 
       - run: npm ci
 
+      # Build before publishing. npm validates the `bin` target as it loads
+      # package.json, which happens before prepublishOnly runs, so on a fresh
+      # checkout it warns `No bin file found at dist/bin.js` twice even though
+      # the packed tarball ends up correct. Producing dist/ up front silences a
+      # warning that would otherwise train us to ignore publish output.
+      # prepublishOnly still runs the full gate, which protects manual publishes.
+      - run: npm run build
+
       # No NODE_AUTH_TOKEN. GitHub mints a short-lived OIDC token that npm
       # verifies against the trusted publisher registered for this repository
       # and workflow filename, so no long-lived secret exists to leak.
