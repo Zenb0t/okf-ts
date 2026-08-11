@@ -281,3 +281,198 @@ describe("buildReport", () => {
     });
   });
 });
+
+describe("buildReport — source drift boundaries", () => {
+  const now = new Date("2026-08-15T00:00:00Z");
+
+  function drifted(
+    frontmatter: string,
+    timestamps: [string, string][]
+  ): string[] {
+    const report = buildReport(bundle([concept("docs/loader", frontmatter)]), {
+      now,
+      sourceTimestamps: new Map(timestamps)
+    });
+    return report.findings
+      .filter((finding) => finding.kind === "source-drift")
+      .map((finding) => String(finding.detail?.resolved));
+  }
+
+  it("compares timestamps chronologically, not as strings", () => {
+    // The source moved at 23:00Z; the doc was confirmed at 00:00+02:00, which is
+    // 22:00Z — an hour earlier. Sorting these as text puts the confirmation
+    // later and hides real drift, because "2026-08-10" > "2026-08-09".
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-10T00:00:00+02:00\nsources:\n  - resource: ../src/node.ts\n",
+        [["src/node.ts", "2026-08-09T23:00:00Z"]]
+      )
+    ).toEqual(["src/node.ts"]);
+  });
+
+  it("treats an offset confirmation that really is later as current", () => {
+    // Same shape, reversed: 00:00+02:00 is 22:00Z, after a 21:00Z change.
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-10T00:00:00+02:00\nsources:\n  - resource: ../src/node.ts\n",
+        [["src/node.ts", "2026-08-09T21:00:00Z"]]
+      )
+    ).toEqual([]);
+  });
+
+  it("does not flag a source touched at the very moment of confirmation", () => {
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-01T12:00:00Z\nsources:\n  - resource: ../src/node.ts\n",
+        [["src/node.ts", "2026-08-01T12:00:00Z"]]
+      )
+    ).toEqual([]);
+  });
+
+  it("flags a source one second past the confirmation", () => {
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-01T12:00:00Z\nsources:\n  - resource: ../src/node.ts\n",
+        [["src/node.ts", "2026-08-01T12:00:01Z"]]
+      )
+    ).toEqual(["src/node.ts"]);
+  });
+
+  it("measures drift from generation when nothing has been verified", () => {
+    expect(
+      drifted(
+        "type: Reference\ngenerated:\n  by: process:claude-code\n  at: 2026-08-01T00:00:00Z\nsources:\n  - resource: ../src/node.ts\n",
+        [["src/node.ts", "2026-08-02T00:00:00Z"]]
+      )
+    ).toEqual(["src/node.ts"]);
+  });
+
+  it("reports only the sources that actually moved", () => {
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-05T00:00:00Z\nsources:\n  - resource: ../src/node.ts\n  - resource: ../src/parser.ts\n  - resource: ../src/graph.ts\n",
+        [
+          ["src/node.ts", "2026-08-06T00:00:00Z"],
+          ["src/parser.ts", "2026-07-01T00:00:00Z"],
+          ["src/graph.ts", "2026-08-07T00:00:00Z"]
+        ]
+      )
+    ).toEqual(["src/node.ts", "src/graph.ts"]);
+  });
+
+  it("ignores a source with no recorded history", () => {
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-01T00:00:00Z\nsources:\n  - resource: ../src/untracked.ts\n",
+        []
+      )
+    ).toEqual([]);
+  });
+
+  it("judges each citing concept against its own confirmation", () => {
+    const report = buildReport(
+      bundle([
+        concept(
+          "docs/fresh",
+          "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-09T00:00:00Z\nsources:\n  - resource: ../src/node.ts\n"
+        ),
+        concept(
+          "docs/stale",
+          "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-01T00:00:00Z\nsources:\n  - resource: ../src/node.ts\n"
+        )
+      ]),
+      {
+        now,
+        sourceTimestamps: new Map([["src/node.ts", "2026-08-05T00:00:00Z"]])
+      }
+    );
+
+    expect(
+      report.findings
+        .filter((finding) => finding.kind === "source-drift")
+        .map((finding) => finding.id)
+    ).toEqual(["docs/stale"]);
+  });
+
+  it("tracks a source that lives outside the bundle root", () => {
+    const report = buildReport(
+      bundle([
+        concept(
+          "loader",
+          "type: Reference\nverified:\n  by: human:ada\n  at: 2026-08-01T00:00:00Z\nsources:\n  - resource: ../../elsewhere/thing.ts\n"
+        )
+      ]),
+      {
+        now,
+        sourceTimestamps: new Map([
+          ["../../elsewhere/thing.ts", "2026-08-02T00:00:00Z"]
+        ])
+      }
+    );
+
+    expect(report.findings.filter((finding) => finding.kind === "source-drift")).toHaveLength(1);
+  });
+
+  it("ignores a malformed confirmation rather than treating it as the epoch", () => {
+    // A concept whose only timestamp is unparseable has no confirmation to
+    // measure against, so it must not be reported as drifted against every
+    // source it cites.
+    expect(
+      drifted(
+        "type: Reference\nverified:\n  by: human:ada\n  at: last Tuesday\nsources:\n  - resource: ../src/node.ts\n",
+        [["src/node.ts", "2026-08-02T00:00:00Z"]]
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("buildReport — trust and lifecycle interaction", () => {
+  const now = new Date("2026-08-15T00:00:00Z");
+
+  it("leaves drafts out of the unverified queue", () => {
+    const report = buildReport(
+      bundle([
+        concept("drafts/wip", "type: Guide\nstatus: draft\n"),
+        concept("guides/shipped", "type: Guide\n")
+      ]),
+      { now }
+    );
+
+    expect(
+      report.findings
+        .filter((finding) => finding.kind === "unverified")
+        .map((finding) => finding.id)
+    ).toEqual(["guides/shipped"]);
+  });
+
+  it("counts a concept as machine-confirmed when only its human entry is malformed", () => {
+    const report = buildReport(
+      bundle([
+        concept(
+          "a",
+          "type: Guide\nverified:\n  - by: human:ada\n    at: not-a-date\n  - by: process:ci\n    at: 2026-08-01T00:00:00Z\n"
+        )
+      ]),
+      { now }
+    );
+
+    expect(report.trust).toEqual({
+      "human-reviewed": 0,
+      "machine-confirmed": 1,
+      unverified: 0
+    });
+    expect(report.findings).toEqual([]);
+  });
+
+  it("still reports staleness for a concept nobody has verified", () => {
+    const report = buildReport(
+      bundle([concept("a", "type: Guide\ntitle: A\nstale_after: 2026-01-01\n")]),
+      { now }
+    );
+
+    expect(report.findings.map((finding) => finding.kind).sort()).toEqual([
+      "stale",
+      "unverified"
+    ]);
+  });
+});
