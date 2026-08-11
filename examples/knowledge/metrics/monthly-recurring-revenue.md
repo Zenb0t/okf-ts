@@ -13,10 +13,10 @@ sources:
     last_modified: 2026-08-09
 generated:
   by: process:finance-pipeline
-  at: 2026-08-09T12:00:00Z
+  at: 2026-08-10T00:00:00Z
 verified:
   by: human:finance-reviewer
-  at: 2026-08-09T12:10:00Z
+  at: 2026-08-10T00:10:00Z
 status: stable
 stale_after: 2027-08-09
 ---
