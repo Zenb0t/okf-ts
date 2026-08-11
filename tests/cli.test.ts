@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCli } from "../src/cli.js";
 import type { CliDeps } from "../src/cli.js";
+import { deriveTrustTier, parseConcept } from "../src/index.js";
 
 const dogfoodBundleRoot = fileURLToPath(
   new URL("../examples/knowledge", import.meta.url)
@@ -277,15 +278,24 @@ describe("okf stamp — replacing existing provenance", () => {
       )
     ).toBe(0);
 
-    const written = await readFile(file, "utf8");
-    expect(written).toContain("by: process:claude-code");
-    expect(written).not.toContain("process:old-pipeline");
+    const stamped = parseConcept(await readFile(file, "utf8"));
+
+    expect(stamped.metadata.generated).toEqual({
+      by: "process:claude-code",
+      at: "2026-08-10T09:00:00Z"
+    });
     // A human verification already on the document is the reviewer's, not ours,
-    // so stamping authorship must leave it exactly as it was.
-    expect(written).toContain("by: human:ada");
-    expect(written).toContain("stale_after: 2030-01-01");
-    expect(written).toContain("x-owner: platform");
-    expect(written).toContain("# Contract");
+    // so stamping authorship must leave it exactly as it was. Comparing the
+    // whole entry rather than just the actor matters: keeping `by` while losing
+    // `at` demotes the concept from human-reviewed to unverified, because
+    // deriveTrustTier requires a valid actor *and* a valid timestamp.
+    expect(stamped.metadata.verified).toEqual([
+      { by: "human:ada", at: "2026-01-01T00:00:00Z" }
+    ]);
+    expect(deriveTrustTier(stamped)).toBe("human-reviewed");
+    expect(stamped.metadata.stale_after).toBe("2030-01-01");
+    expect(stamped.metadata["x-owner"]).toBe("platform");
+    expect(stamped.body).toContain("# Contract");
   });
 
   it("keeps an existing expiry when none is supplied", async () => {

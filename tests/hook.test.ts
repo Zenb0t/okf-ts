@@ -45,11 +45,15 @@ async function decisionFor(
   content: string,
   overrides: Record<string, unknown> = {}
 ): Promise<string> {
-  const { stdout } = await runHook({
+  const { code, stdout } = await runHook({
     tool_name: "Write",
     tool_input: { file_path: "docs/concept.md", content },
     ...overrides
   });
+  // A hook that crashes exits nonzero with no stdout, which is byte-identical to
+  // a silent allow. Without this check every permissive assertion below would
+  // pass against a hook that never actually ran.
+  expect(code).toBe(0);
   if (stdout.trim() === "") {
     return "allow";
   }
@@ -182,13 +186,16 @@ describe("verification hook — ambiguity and scope", () => {
   });
 
   it("leaves tools other than Write and Edit alone", async () => {
-    const { stdout } = await runHook({
+    const { code, stdout } = await runHook({
       tool_name: "Read",
       tool_input: {
         file_path: "docs/concept.md",
         content: "verified:\n  by: human:ada\n"
       }
     });
+    // Same trap as decisionFor: silence only means "allowed" if the process
+    // actually exited cleanly.
+    expect(code).toBe(0);
     expect(stdout.trim()).toBe("");
   });
 
